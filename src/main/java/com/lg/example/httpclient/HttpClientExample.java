@@ -1,6 +1,13 @@
 package com.lg.example.httpclient;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.parser.Feature;
+import junit.framework.TestCase;
 import org.apache.http.*;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.HttpResponseException;
+import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -8,21 +15,25 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.*;
 import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.DefaultConnectionKeepAliveStrategy;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicHeaderElementIterator;
 import org.apache.http.message.BasicHttpResponse;
 import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.EntityUtils;
 import org.junit.Test;
 
 import java.io.*;
 import java.net.URI;
+import java.nio.charset.Charset;
 import java.util.*;
 
 /**
  * Created by liuguo on 2016/11/22.
  */
-public class HttpClientExample {
+public class HttpClientExample extends TestCase{
+
     public static String httpGet(String url){
         CloseableHttpClient httpClient = HttpClients.createDefault();
         HttpGet httpGet = new HttpGet(url);
@@ -300,6 +311,94 @@ public class HttpClientExample {
 
         System.out.println(EntityUtils.toString(httpPost.getEntity()));//username=lg&password=heheh
     }
+
+    /**
+     * http chunk编码
+     * @throws IOException
+     */
+    @Test
+    public void testContentChunk() throws IOException{
+        StringEntity stringEntity = new StringEntity("import message",ContentType.create("text/plain","UTF-8"));
+        stringEntity.setChunked(true);//This value will be ignored when using HTTP protocol versions that do not support chunk coding, such as HTTP/1.0
+
+        HttpPost httpPost = new HttpPost("http://localhost/messsage");
+        httpPost.setEntity(stringEntity);
+
+        System.out.println(EntityUtils.toString(httpPost.getEntity()));
+    }
+
+    /**
+     * The simplest and the most convenient way to handle responses is by using the ResponseHandler interface,
+     * which includes the handleResponse(HttpResponse response) method.
+     * This method completely relieves the user from having to worry about connection management.
+     * When using a ResponseHandler, HttpClient will automatically take care of ensuring release of the connection
+     * back to the connection manager regardless whether the request execution succeeds or causes an exception
+     *
+     * 使用ResponseHander#handleResponse来处理响应结果可以让开发者不再担心连接管理.
+     * 当使用ResponseHandler时，HttpClient无论请求成功或是遇到异常都将自动保证关闭连接资源.
+     * @throws IOException
+     */
+    @Test
+    public void testResponseHander() throws IOException{
+        CloseableHttpClient closeableHttpClient = HttpClients.createDefault();
+        HttpGet httpget = new HttpGet("http://api.map.baidu.com/place/v2/search?query=银行&page_size=10&page_num=0&scope=1&region=成都&output=json&ak=b8q6flHsDqtpREDsluXYLxB8jstp0bN5");
+
+        ResponseHandler<JSONObject> rh = new ResponseHandler<JSONObject>() {
+            public JSONObject handleResponse(final HttpResponse httpResponse) throws IOException {
+                StatusLine statusLine = httpResponse.getStatusLine();
+                if(statusLine.getStatusCode() >= 300){
+                    throw new HttpResponseException(
+                            statusLine.getStatusCode(),
+                            statusLine.getReasonPhrase());
+                }
+                HttpEntity entity = httpResponse.getEntity();
+                if(entity == null){
+                    throw new ClientProtocolException("Response contains no content");
+                }
+
+                ContentType contentType = ContentType.getOrDefault(entity);
+                Charset charset = contentType.getCharset();
+                Reader reader = new InputStreamReader(entity.getContent(),charset);
+                return JSON.parseObject(entity.getContent(),charset, Object.class, Feature.AutoCloseSource);
+            }
+        };
+        JSONObject myjson = closeableHttpClient.execute(httpget, rh);
+        System.out.println(JSONObject.toJSONString(myjson));
+    }
+
+    /**
+     * 自定义HttpClient
+     * HttpClient interface represents the most essential contract for HTTP request execution.
+     * It imposes no restrictions or particular details on the request execution process
+     * and leaves the specifics of connection management, state management, authentication
+     * and redirect handling up to individual implementations.
+     * This should make it easier to decorate the interface with additional functionality
+     * such as response content caching.
+     * Generally HttpClient implementations act as a facade to a number of special purpose handler
+     * or strategy interface implementations responsible for handling of a particular aspect of the HTTP protocol
+     * such as redirect or authentication handling or making decision about connection persistence
+     * and keep alive duration. This enables the users to selectively replace default implementation of
+     * those aspects with custom, application specific ones.
+     */
+    @Test
+    public void testCustomHttpClient(){
+        CloseableHttpClient closeableHttpClient = HttpClients
+                .custom()
+                .setKeepAliveStrategy(new DefaultConnectionKeepAliveStrategy() {
+                    @Override
+                    public long getKeepAliveDuration(HttpResponse response, HttpContext context) {
+                        long keepAliveDuration = super.getKeepAliveDuration(response, context);
+                        // Keep connections alive 5 seconds if a keep-alive value
+                        // has not be explicitly set by the server
+                        if (keepAliveDuration == -1) {
+                            keepAliveDuration = 5000;
+                        }
+                        return keepAliveDuration;
+                    }
+                }).build();
+    }
+
+
 
 
 
