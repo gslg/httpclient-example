@@ -1,4 +1,4 @@
-package com.lg.example.httpclient;
+package com.lg.example.httpclient.fundamentals;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
@@ -6,13 +6,16 @@ import com.alibaba.fastjson.parser.Feature;
 import junit.framework.TestCase;
 import org.apache.http.*;
 import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.HttpRequestRetryHandler;
 import org.apache.http.client.HttpResponseException;
 import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.conn.ConnectTimeoutException;
 import org.apache.http.entity.*;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.DefaultConnectionKeepAliveStrategy;
@@ -24,8 +27,10 @@ import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.EntityUtils;
 import org.junit.Test;
 
+import javax.net.ssl.SSLException;
 import java.io.*;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.nio.charset.Charset;
 import java.util.*;
 
@@ -397,6 +402,56 @@ public class HttpClientExample extends TestCase{
                     }
                 }).build();
     }
+
+    @Test
+    public void testRetryHandler(){
+
+        HttpRequestRetryHandler httpRequestRetryHandler = new HttpRequestRetryHandler() {
+            public boolean retryRequest(IOException e, int i, HttpContext httpContext) {
+                if(i >= 5){
+                    // Do not retry if over max retry count
+                    return false;
+                }
+
+                if(e instanceof InterruptedIOException){
+                    // Timeout
+                    return false;
+                }
+
+                if(e instanceof UnknownHostException){
+                    //unknown host
+                    return false;
+                }
+
+                if(e instanceof ConnectTimeoutException){
+                    // Connection refused
+                    return false;
+                }
+
+                if(e instanceof SSLException){
+                    // SSL handshake exception
+                    return false;
+                }
+
+                HttpClientContext httpClientContext = HttpClientContext.adapt(httpContext);
+                HttpRequest request =  httpClientContext.getRequest();
+                //非封闭的请求幂等
+                boolean idempotent = !(request instanceof HttpEntityEnclosingRequest);
+                if(!idempotent){
+                    // Retry if the request is considered idempotent
+                    //重试如果这个请求是幂等的
+                    return true;
+                }
+                return false;
+            }
+        };
+
+        CloseableHttpClient closeableHttpClient = HttpClients
+                .custom()
+                .setRetryHandler(httpRequestRetryHandler)
+                .build();
+    }
+
 
 
 
