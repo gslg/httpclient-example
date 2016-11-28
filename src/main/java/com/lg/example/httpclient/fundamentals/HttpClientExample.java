@@ -452,6 +452,20 @@ public class HttpClientExample extends TestCase{
                 .build();
     }
 
+    @Test
+    public void testRedirectHandler(){
+       /* LaxRedirectStrategy redirectStrategy = new LaxRedirectStrategy();
+        CloseableHttpClient httpClient = HttpClients.custom()
+                .setRedirectStrategy(redirectStrategy)
+                .build();*/
+
+       CloseableHttpClient httpClient = HttpClients.createDefault();
+        HttpClientContext context = HttpClientContext.create();
+        HttpGet httpGet = new HttpGet("http://localhost:8080/login");
+
+
+    }
+
 
 
 
